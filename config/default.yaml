@@ -1,0 +1,49 @@
+# TradFiBot Configuration
+
+# Objectives
+objectives:
+  max_trades_per_day: 10
+  double_capital_days: 30   # Target: 2x capital every 30 days
+
+# Trading pairs (alt-coins for training)
+symbols:
+  default: "BTC-USDT"
+  training: ["BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT"]
+
+# Fees — critical for learning profitable trades
+fees:
+  maker: 0.004   # 0.4% maker fee (limit orders)
+  taker: 0.006   # 0.6% taker fee (market orders)
+  # Min profit threshold to account for round-trip fee
+  min_profit_pct: 0.012  # ~1.2% to cover buy+sell taker fees
+
+# Technical indicators
+indicators:
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  rsi:
+    length: 14
+    overbought: 70
+    oversold: 30
+  bollinger:
+    length: 20
+    std: 2.0
+  atr:
+    length: 14
+
+# Environment (Gymnasium)
+env:
+  initial_balance: 10000.0
+  max_position_pct: 0.95   # Max 95% in asset
+  window_size: 60          # Lookback bars in observation
+  reward_scale: 1.0
+  episode_bars: 500        # Bars per episode (~21 days at 1h); random start each episode
+
+# Training
+training:
+  total_timesteps: 100000  # Total env steps across all episodes
+  learning_rate: 0.0003
+  batch_size: 64
+  gamma: 0.99

@@ -1,0 +1,19 @@
+# Reinforcement Learning
+gymnasium>=0.29.0
+stable-baselines3>=2.2.0
+
+# Data & Technical Analysis
+pandas>=2.0.0
+numpy>=1.24.0
+ta>=0.11.0
+
+# Exchange Connectivity (paper + live)
+ccxt>=4.0.0
+
+# Configuration & Logging
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Optional: Progress & Visualization
+tqdm>=4.65.0
+matplotlib>=3.7.0
