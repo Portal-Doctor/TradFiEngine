@@ -251,7 +251,7 @@ Or pass `key_file="path/to/cdp_api_key.json"` to `CoinbaseBroker`. Map internal 
 
 **Live main loop:** `python scripts/live_loop.py --symbol BTC-USDT --timeframe 1h` — waits for candle close (temporal alignment); `--dry-run` logs would-be trades.
 
-**Dashboard:** `streamlit run scripts/dashboard.py` — KPIs (Total Return %, Win Rate), equity curve, trade markers, position pie. Reads from `data/orders.db`.
+**Dashboard:** `streamlit run scripts/dashboard.py` — KPIs (Total Return %, Win Rate, Daily Max Drawdown), equity curve, Asset Performance (PnL + Slippage per symbol), Trade Markers, Exposure Ratio (stay under 95%), position pie (live prices), Recent Executions with Slippage ($) column. Reads from `data/orders.db`.
 
 **SQLiteLogger** — Connective tissue between Executor and Dashboard. Logs every trade with fee and status. For sells, computes `realized_pnl` via AVG cost: `((Sell Price − Avg Buy Price) × Amount) − Sell Fee`.
 
