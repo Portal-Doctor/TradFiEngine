@@ -2,18 +2,21 @@
 # Phase isolation: each phase uses only its own paths. Running one never affects the others.
 paths:
   checkpoints: "checkpoints"       # Phase 1 (Learning) writes only here
-  order_db: "data/orders.db"       # Phase 3 (Live) writes only here; Phase 1 & 2 never touch
+  order_db: "data/orders.db"       # Phase 3 (Live) default
+  order_db_paper: "data/paper/orders.db"
+  order_db_live: "data/orders.db"
 
 # Paper trading (safety buffer)
 paper:
   slippage_pct: 0.0008   # 0.08% simulated slippage (between 0.05-0.1%)
   log_latency: true      # Log time from signal to order confirmation
+  order_db_path: null    # Uses paths.order_db_paper when null
 
 # Live trading (hardened)
 live:
   max_daily_drawdown_pct: 5.0   # Kill switch: stop if daily loss exceeds this %
   api_retry_max: 5              # Max retries for 429/5xx with exponential backoff
-  order_db_path: null              # Uses paths.order_db when null
+  order_db_path: null           # Uses paths.order_db_live when null
 
 # Objectives
 objectives:

@@ -15,6 +15,12 @@ ccxt>=4.0.0
 python-dotenv>=1.0.0
 pyyaml>=6.0
 
+# Alerts (Telegram)
+python-telegram-bot>=21.0
+
+# Health endpoint (live_loop)
+flask>=3.0.0
+
 # Optional: Progress & Visualization
 tqdm>=4.65.0
 matplotlib>=3.7.0

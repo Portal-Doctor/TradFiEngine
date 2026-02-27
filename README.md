@@ -182,6 +182,19 @@ See [How to Get Coinbase API Keys](https://www.youtube.com/watch?v=nuuiMkkzWxc) 
 
 See [Stable Baselines 3 Model Management](https://www.youtube.com/watch?v=dLP-2Y6yu70) for saving, loading, and managing PPO models.
 
+### Telegram Bot Setup
+
+For push alerts on trades, circuit breaker, errors, and warnings:
+
+1. Open Telegram and search for **@BotFather**. Send `/newbot` and follow the prompts to create a bot and get your **API Token**.
+2. Search for **@userinfobot** to get your **Chat ID**.
+3. Add these to your `.env` file:
+
+```
+TELEGRAM_BOT_TOKEN=your_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
+```
+
 **CCXT (multi-exchange):** Create `.env`:
 
 ```
@@ -210,7 +223,7 @@ Or pass `key_file="path/to/cdp_api_key.json"` to `CoinbaseBroker`. Map internal 
 
 ### Docker Workflow
 
-All services share the `checkpoints/` volume so models flow from training → paper → live:
+All services share the `checkpoints/` volume so models flow from training → paper → live. **Because all three stages are in one file, you must manage which one is active.**
 
 | Phase   | Command                                | Purpose                        |
 |---------|----------------------------------------|--------------------------------|
@@ -218,7 +231,77 @@ All services share the `checkpoints/` volume so models flow from training → pa
 | Paper   | `docker compose up -d paper-trader`    | Test with simulated capital    |
 | Live    | `docker compose up -d live-engine dashboard` | Go live + monitor          |
 
+**Step-by-step:**
+
+1. **Train:** Run `docker compose run --rm trainer`. Wait for it to finish.
+2. **Test:** Run `docker compose up -d paper-trader`. Monitor the logs to ensure the model makes good decisions.
+3. **Go Live:** Run `docker compose stop paper-trader`, then `docker compose up -d live-engine` (and optionally `dashboard`).
+
 The trainer saves to `/app/checkpoints/`; paper-trader and live-engine load from the same path. `TRADING_MODE=PAPER` uses `PaperBroker`; `TRADING_MODE=LIVE` uses CCXT/Coinbase.
+
+### Docker / Mac Optimization
+
+**Optimization strategy for Intel Mac**
+
+1. **File performance (bind mounts)**  
+   macOS can slow down when sharing files between the host (APFS) and the Docker VM (Linux) due to bind mount latency.
+
+   - Place the TradFiBot project in your Home directory (`/Users/yourname/...`).
+   - In Docker Desktop: **Settings → Resources → File Sharing**, make sure your Home directory is included.
+   - If writes to `orders.db` are slow, move `data/` off the bind mount and onto a Docker **Named Volume**.
+
+2. **Resource allocation (CPU/RAM)**  
+   On Intel Macs, limit Docker’s usage so it doesn’t starve the host.
+
+   - Go to **Docker Desktop → Settings → Resources**.
+   - **CPUs:** Use 2–3 of the available cores.
+   - **Memory:** Allocate 4–6 GB.
+
+### Retraining & Resetting
+
+To retrain the model, clear old data and run the trainer again. Because `data/` is on your Mac and mapped into Docker, you can edit it directly.
+
+**1. Stop active services**  
+Stop all containers before changing data:
+
+```bash
+docker compose down
+```
+
+**2. Erase paper trade data**  
+Simulated paper orders live in `data/paper/orders.db`. Remove it to reset paper history:
+
+```bash
+rm -f data/paper/orders.db
+```
+
+To also clear live order history:
+
+```bash
+rm -f data/orders.db
+```
+
+To fully retrain and discard the old model, remove checkpoints:
+
+```bash
+rm -rf checkpoints/*
+```
+
+**3. Run retraining**  
+Start training again:
+
+```bash
+docker compose run --rm trainer
+```
+
+### Health Endpoint
+
+The live-engine and paper-trader expose a health check at `/health` for monitoring:
+
+- **Live:** `curl http://localhost:5000/health`
+- **Paper:** `curl http://localhost:5001/health`
+
+Response: `{"status": "healthy", "mode": "LIVE"}` (or `"PAPER"`).
 
 ## Technical Improvements
 
@@ -271,7 +354,7 @@ The trainer saves to `/app/checkpoints/`; paper-trader and live-engine load from
 
 **Live main loop:** `python scripts/live_loop.py --symbol BTC-USDT --timeframe 1h` — waits for candle close (temporal alignment); `--dry-run` logs would-be trades.
 
-**Dashboard:** `streamlit run scripts/dashboard.py` — KPIs (Total Return %, Win Rate, Daily Max Drawdown), equity curve, Asset Performance (PnL + Slippage per symbol), Trade Markers, Exposure Ratio (stay under 95%), position pie (live prices), Recent Executions with Slippage ($) column. Reads from `data/orders.db`.
+**Dashboard:** `streamlit run scripts/dashboard.py` — KPIs (Total Return %, Win Rate, Daily Max Drawdown), equity curve, Asset Performance (PnL + Slippage per symbol), Trade Markers, Exposure Ratio (stay under 95%), position pie (live prices), Recent Executions with Slippage ($) column. Auto-detects data source: reads from `data/paper/orders.db` when paper-trader is active, `data/orders.db` when live-engine is active (or set `DASHBOARD_MODE=PAPER|LIVE` to override).
 
 **SQLiteLogger** — Connective tissue between Executor and Dashboard. Logs every trade with fee and status. For sells, computes `realized_pnl` via AVG cost: `((Sell Price − Avg Buy Price) × Amount) − Sell Fee`.
 
@@ -322,7 +405,7 @@ Each phase uses only its own paths. Running one never affects the others.
 | Phase | Writes | Reads |
 |-------|--------|-------|
 | 1. Learning | `checkpoints/` | config, data (fetch/CSV) |
-| 2. Paper Trading | *none* | config, `checkpoints/`, fetch |
+| 2. Paper Trading | `data/paper/orders.db` | config, `checkpoints/`, fetch |
 | 3. Live Trading | `data/orders.db` | config, `checkpoints/` |
 
 Configure paths in `config/default.yaml` under `paths`.

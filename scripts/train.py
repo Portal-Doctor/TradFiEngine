@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import sys
 
 # Add project root to path
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import gymnasium as gym
@@ -14,16 +15,37 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import DummyVecEnv
 
+# NEW: Import for Telegram notifications
+import requests
+from dotenv import load_dotenv
+
 from config import load_config
 from src.data import load_ohlcv, fetch_ohlcv_ccxt
 from src.environment import CryptoTradingEnv
 
+# Load environment variables (API keys, Telegram tokens)
+load_dotenv()
+
+def send_telegram_message(message: str):
+    """Sends a message via Telegram bot."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("Telegram credentials missing, skipping notification.")
+        return
+    
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": message}
+    try:
+        requests.post(url, data=payload)
+        print("Telegram notification sent.")
+    except Exception as e:
+        print(f"Failed to send Telegram message: {e}")
 
 def make_env(df, config):
     def _init():
         return CryptoTradingEnv(df, config=config)
     return _init
-
 
 def main():
     config = load_config()
@@ -39,26 +61,22 @@ def main():
     parser.add_argument("--save", type=str, default=default_checkpoint, help="Model save path (Phase 1 only)")
     parser.add_argument("--n-envs", type=int, default=1, help="Number of parallel envs")
     args = parser.parse_args()
+    
     train_cfg = config.get("training", {})
+
+    # Notify start
+    send_telegram_message(f"🚀 Training started for {args.symbol} on {args.timeframe} timeframe.")
 
     if args.data == "fetch" or not args.data:
         print(f"Fetching {args.symbol} {args.timeframe} from CCXT...")
         symbol_ccxt = args.symbol.replace("-", "/")
         df = fetch_ohlcv_ccxt(symbol_ccxt, args.timeframe, limit=args.limit)
-        df = df.rename(columns={"timestamp": "timestamp"})
     else:
         df = load_ohlcv(args.data)
 
-    print(f"Loaded {len(df)} bars. Columns: {list(df.columns)}")
+    print(f"Loaded {len(df)} bars.")
 
-    if args.n_envs > 1:
-        env = make_vec_env(
-            make_env(df, config),
-            n_envs=args.n_envs,
-            vec_env_cls=DummyVecEnv,
-        )
-    else:
-        env = CryptoTradingEnv(df, config=config)
+    env = CryptoTradingEnv(df, config=config)
 
     total_timesteps = args.timesteps or train_cfg.get("total_timesteps", 100_000)
     model = PPO(
@@ -77,6 +95,8 @@ def main():
     model.save(args.save)
     print(f"Model saved to {args.save}")
 
+    # Notify completion
+    send_telegram_message(f"✅ Training completed for {args.symbol}. Model saved: {args.save}")
 
 if __name__ == "__main__":
     main()

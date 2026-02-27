@@ -1,6 +1,6 @@
-# Environment
+# Environment (never commit API keys)
 .env
-.env.local
+.env.*
 .venv/
 venv/
 env/
