@@ -174,6 +174,14 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+### How to Get Coinbase API Keys
+
+See [How to Get Coinbase API Keys](https://www.youtube.com/watch?v=nuuiMkkzWxc) for a step-by-step video walkthrough.
+
+### Stable Baselines 3 Model Management
+
+See [Stable Baselines 3 Model Management](https://www.youtube.com/watch?v=dLP-2Y6yu70) for saving, loading, and managing PPO models.
+
 **CCXT (multi-exchange):** Create `.env`:
 
 ```
@@ -199,6 +207,18 @@ Or pass `key_file="path/to/cdp_api_key.json"` to `CoinbaseBroker`. Map internal 
 4. **Live (dry-run):** `python scripts/live_trade.py --dry-run` to test connectivity.
 5. **Live loop:** `python scripts/live_loop.py --symbol BTC-USDT --timeframe 1h` (or `--dry-run` first).
 6. **Monitor:** `streamlit run scripts/dashboard.py` in another terminal.
+
+### Docker Workflow
+
+All services share the `checkpoints/` volume so models flow from training → paper → live:
+
+| Phase   | Command                                | Purpose                        |
+|---------|----------------------------------------|--------------------------------|
+| Train   | `docker compose run --rm trainer`      | Run training, save model, exit |
+| Paper   | `docker compose up -d paper-trader`    | Test with simulated capital    |
+| Live    | `docker compose up -d live-engine dashboard` | Go live + monitor          |
+
+The trainer saves to `/app/checkpoints/`; paper-trader and live-engine load from the same path. `TRADING_MODE=PAPER` uses `PaperBroker`; `TRADING_MODE=LIVE` uses CCXT/Coinbase.
 
 ## Technical Improvements
 

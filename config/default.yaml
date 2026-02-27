@@ -21,10 +21,31 @@ objectives:
   double_capital_days: 30   # Target: 2x capital every 30 days
 
 # Trading pairs (alt-coins for training and live)
+# Selected for high volume, liquidity, and volatility
 symbols:
   default: "BTC-USDT"
-  training: ["BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT"]
-  live: ["BTC-USDT", "ETH-USDT"]   # Pairs to check and trade in live mode
+  training:
+    - BTC-USDT   # Bitcoin — benchmark
+    - ETH-USDT   # Ethereum — benchmark
+    - SOL-USDT   # Solana — extremely high volume and volatility
+    - XRP-USDT   # Ripple — high liquidity, regulatory-driven swings
+    - DOGE-USDT  # Dogecoin — extreme sentiment-driven volatility
+    - AVAX-USDT  # Avalanche — active ecosystem, high volatility
+    - LINK-USDT  # Chainlink — oracle standard, ecosystem-driven moves
+    - MATIC-USDT # Polygon — top Ethereum L2, heavily traded
+    - LTC-USDT   # Litecoin — long-lived, reliable volatility
+    - ADA-USDT   # Cardano — speculative community, large fluctuations
+  live:
+    - BTC-USDT
+    - ETH-USDT
+    - SOL-USDT
+    - XRP-USDT
+    - DOGE-USDT
+    - AVAX-USDT
+    - LINK-USDT
+    - MATIC-USDT
+    - LTC-USDT
+    - ADA-USDT
 
 # Fees — critical for learning profitable trades
 fees:
