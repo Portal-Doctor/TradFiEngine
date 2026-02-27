@@ -20,10 +20,11 @@ objectives:
   max_trades_per_day: 10
   double_capital_days: 30   # Target: 2x capital every 30 days
 
-# Trading pairs (alt-coins for training)
+# Trading pairs (alt-coins for training and live)
 symbols:
   default: "BTC-USDT"
   training: ["BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT"]
+  live: ["BTC-USDT", "ETH-USDT"]   # Pairs to check and trade in live mode
 
 # Fees — critical for learning profitable trades
 fees:

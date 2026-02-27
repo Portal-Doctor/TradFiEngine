@@ -70,7 +70,8 @@ At the menu, enter **1** (Learning), **2** (Paper Trading), or **3** (Real Tradi
 - `--model PATH` — Model path
 
 **live_loop.py**
-- `--symbol SYMBOL` — Default: BTC-USDT
+- `--symbol SYMBOL` — Single symbol (legacy)
+- `--symbols LIST` — Comma-separated pairs, e.g. BTC-USDT,ETH-USDT,SOL-USDT (default: from config `symbols.live`)
 - `--timeframe TF` — Default: 1h
 - `--model PATH` — Model path
 - `--broker ccxt|coinbase` — Broker choice
@@ -158,7 +159,7 @@ TradFiBot/
 │   ├── indicators/   # MACD, RSI, Bollinger, ATR
 │   ├── environment/  # Gymnasium trading env
 │   ├── engine/       # DataIngestor, StrategyBrain, Executor
-│   ├── core/         # Circuit breaker, order tracker
+│   ├── core/         # Circuit breaker, order tracker, SQLite logger
 │   └── brokers/      # Paper & CCXT brokers
 ├── data/             # Historical data (gitignored)
 ├── scripts/          # Training, paper, live runners
@@ -252,23 +253,35 @@ Or pass `key_file="path/to/cdp_api_key.json"` to `CoinbaseBroker`. Map internal 
 
 **Dashboard:** `streamlit run scripts/dashboard.py` — KPIs (Total Return %, Win Rate), equity curve, trade markers, position pie. Reads from `data/orders.db`.
 
+**SQLiteLogger** — Connective tissue between Executor and Dashboard. Logs every trade with fee and status. For sells, computes `realized_pnl` via AVG cost: `((Sell Price − Avg Buy Price) × Amount) − Sell Fee`.
+
 **Telemetry:** Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env` for push alerts on trades, circuit breaker, and errors.
 
-**orders.db schema** (dashboard + telemetry):
+**orders.db schema** (SQLiteLogger + dashboard + OrderTracker):
 
-| Column      | Type | Description                          |
-|-------------|------|--------------------------------------|
-| order_id    | TEXT | Primary key                          |
-| symbol      | TEXT | e.g. BTC-USD                         |
-| side        | TEXT | buy \| sell                          |
-| amount      | REAL | Base currency                        |
-| price       | REAL | Execution price                      |
-| status      | TEXT | open \| filled \| cancelled          |
-| created_at  | TEXT | ISO 8601                             |
+| Column       | Type | Description                          |
+|--------------|------|--------------------------------------|
+| order_id     | TEXT | Primary key                          |
+| created_at   | TEXT | ISO 8601                             |
+| symbol       | TEXT | e.g. BTC-USD                         |
+| side         | TEXT | buy \| sell                          |
+| amount       | REAL | Base currency                        |
+| price        | REAL | Execution price                      |
+| fee          | REAL | Fee paid (default 0)                 |
+| realized_pnl | REAL | Realized P&L (default 0)             |
+| status       | TEXT | open \| filled \| cancelled \| failed |
 
 **Advanced Trade checklist:** Market buy = quote_size (USD); market sell = base_size (crypto). Symbol mapping: `BTC-USDT` → `BTC-USD`. Use `uuid.uuid4()` for client_order_id (implemented). Rate limits ~30 req/s; keep polling low.
 
 **Kill switch:** On 403 Forbidden or Insufficient Funds, the live loop halts trading (target 0% = all cash) and logs. Restart manually to retry.
+
+**Live Reality (hardening):**
+
+| Factor        | Description                                              | Mitigation                                  |
+|---------------|----------------------------------------------------------|---------------------------------------------|
+| FIFO vs. AVG  | Exchanges track tax lots via First-In-First-Out          | AVG used for bot performance; use FIFO for tax |
+| Partial fills | Market order might fill in multiple chunks at diff prices | Executor should aggregate partial fills before logging |
+| Slippage      | Fill price often worse than signal price in volatile mkts | Dashboard: Slippage = Signal Price − Fill Price |
 
 ## Configuration
 
