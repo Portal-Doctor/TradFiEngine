@@ -146,6 +146,31 @@ class CCXTBroker(BaseBroker):
 
         return _api_with_retry(_create, max_retries=self._api_retry_max)
 
+    def get_symbol_info(self, symbol: str) -> dict:
+        """Fetch precision from exchange markets. Coinbase requires correct decimals."""
+        self._ensure_auth()
+        try:
+            markets = self._exchange.load_markets()
+            m = markets.get(symbol) or self._exchange.market(symbol)
+        except Exception:
+            return {"base_increment": 1e-8, "quote_increment": 1e-2}
+        prec = m.get("precision", {})
+        amt, prc = prec.get("amount"), prec.get("price")
+
+        def to_increment(v, default: float) -> float:
+            if v is None:
+                return default
+            if isinstance(v, (int, float)) and v > 0 and v < 1:
+                return float(v)  # already increment
+            if isinstance(v, int):
+                return 10 ** (-v)
+            return default
+
+        return {
+            "base_increment": to_increment(amt, 1e-8),
+            "quote_increment": to_increment(prc, 1e-2),
+        }
+
     def get_ticker_fee(self, symbol: str) -> tuple[float, float]:
         if symbol not in self._loaded_fees:
             try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Literal
 
@@ -13,6 +14,7 @@ class PaperBroker(BaseBroker):
     Simulates trading with virtual balance.
     Uses config fees, slippage, and current price for PnL calculation.
     Mirrors live conditions: slippage simulates market impact and spread.
+    Logs executions for comparison with live spread during paper-trade validation.
     """
 
     def __init__(
@@ -22,6 +24,7 @@ class PaperBroker(BaseBroker):
         taker_fee: float = 0.006,
         maker_fee: float = 0.004,
         slippage_pct: float = 0.0008,
+        log_executions: bool = True,
     ):
         self._balance = initial_balance
         self._quote = quote_currency
@@ -30,19 +33,26 @@ class PaperBroker(BaseBroker):
         self.maker_fee = maker_fee
         self.slippage_pct = slippage_pct  # 0.08% default; simulates worse fill than mid
         self._price_source: dict[str, float] = {}  # symbol -> last known price
+        self.log_executions = log_executions
+        self._log = logging.getLogger("TradFiEngine.PaperBroker")
 
     def set_price(self, symbol: str, price: float) -> None:
         """Update current price for a symbol (e.g. from historical bar or live feed)."""
         self._price_source[symbol] = price
 
     def get_balance(self, currency: str = "USDT") -> Balance:
-        total = self._balance
+        if currency == self._quote:
+            total = self._balance
+            for sym, amount in self._positions.items():
+                price = self._price_source.get(sym, 0.0)
+                total += amount * price
+            return Balance(free=self._balance, used=0.0, total=total, currency=currency)
+        # Base currency (e.g. BTC): return position amount
         for sym, amount in self._positions.items():
             base = sym.split("-")[0] if "-" in sym else sym
             if base == currency:
-                price = self._price_source.get(sym, 0.0)
-                total += amount * price
-        return Balance(free=self._balance, used=0.0, total=self._balance, currency=currency)
+                return Balance(free=amount, used=0.0, total=amount, currency=currency)
+        return Balance(free=0.0, used=0.0, total=0.0, currency=currency)
 
     def get_price(self, symbol: str) -> float:
         if symbol in self._price_source:
@@ -82,6 +92,17 @@ class PaperBroker(BaseBroker):
             self._positions[base] = held - amount
             if self._positions[base] <= 0:
                 del self._positions[base]
+
+        if self.log_executions:
+            self._log.info(
+                "PAPER %s %s %.8f %s @ %.2f (mid %.2f, slippage %.4f%%)",
+                side.upper(),
+                amount,
+                symbol,
+                exec_price,
+                mid_price,
+                self.slippage_pct * 100,
+            )
 
         return OrderResult(
             order_id=str(uuid.uuid4()),

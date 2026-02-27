@@ -39,7 +39,9 @@ def main():
     broker._api_retry_max = live_cfg.get("api_retry_max", 5)
 
     circuit = CircuitBreaker(max_daily_drawdown_pct=live_cfg.get("max_daily_drawdown_pct", 5.0))
-    order_tracker = OrderTracker(db_path=live_cfg.get("order_db_path", "data/orders.db"))
+    paths = config.get("paths", {})
+    order_db = live_cfg.get("order_db_path") or paths.get("order_db", "data/orders.db")
+    order_tracker = OrderTracker(db_path=order_db)
 
     bal = broker.get_balance("USDT")
     price = broker.get_price(args.symbol)

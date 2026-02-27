@@ -26,17 +26,19 @@ def make_env(df, config):
 
 
 def main():
+    config = load_config()
+    paths = config.get("paths", {})
+    default_checkpoint = str(Path(paths.get("checkpoints", "checkpoints")) / "tradfibot")
+
     parser = argparse.ArgumentParser(description="Train TradFiBot on historical data")
     parser.add_argument("--data", type=str, help="Path to OHLCV CSV, or 'fetch' to use CCXT")
     parser.add_argument("--symbol", type=str, default="BTC-USDT", help="Symbol for fetch (e.g. BTC-USDT)")
     parser.add_argument("--timeframe", type=str, default="1h", help="Candle timeframe (1h, 4h, etc.)")
     parser.add_argument("--limit", type=int, default=2000, help="Bars to fetch when using --data fetch")
     parser.add_argument("--timesteps", type=int, default=None, help="Training timesteps (default from config)")
-    parser.add_argument("--save", type=str, default="checkpoints/tradfibot", help="Model save path")
+    parser.add_argument("--save", type=str, default=default_checkpoint, help="Model save path (Phase 1 only)")
     parser.add_argument("--n-envs", type=int, default=1, help="Number of parallel envs")
     args = parser.parse_args()
-
-    config = load_config()
     train_cfg = config.get("training", {})
 
     if args.data == "fetch" or not args.data:

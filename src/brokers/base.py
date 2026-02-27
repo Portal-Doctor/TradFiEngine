@@ -17,6 +17,8 @@ class OrderResult:
     fee: float
     filled: bool
     raw: dict | None = None
+    success: bool = True
+    error_message: str | None = None
 
 
 @dataclass
@@ -56,3 +58,11 @@ class BaseBroker(ABC):
     def get_ticker_fee(self, symbol: str) -> tuple[float, float]:
         """Return (maker_fee, taker_fee) as decimals."""
         ...
+
+    def get_symbol_info(self, symbol: str) -> dict:
+        """
+        Optional: return precision info for Coinbase/exchange.
+        Keys: base_increment, quote_increment (min step for amount/price).
+        Default: 8 decimals for amount.
+        """
+        return {"base_increment": 1e-8, "quote_increment": 1e-2}

@@ -1,8 +1,12 @@
 # TradFiBot — Automated Crypto Trading Engine
 
-A reinforcement learning–based auto-trader that learns to trade alt-coins using historical data, paper trading, and eventually live execution via Coinbase.
+A reinforcement learning–based auto-trader that learns to trade alt-coins using historical data, paper trading, and live execution via Coinbase.
 
-## Architecture
+## How It Works
+
+1. **Learning** — Train a PPO agent on historical OHLCV data. The model learns to output a target position (0–1) at each bar.
+2. **Paper Trading** — Run the trained model over unseen history with simulated fees and slippage. Validates performance before risking real money.
+3. **Live Trading** — Connect to Coinbase, wait for candle close, get model signal, execute via broker. Orders are logged to `data/orders.db` for the dashboard.
 
 ```
 Historical Data → Gymnasium Env → RL Agent → Paper Trading → Live (CCXT/Coinbase)
@@ -10,10 +14,77 @@ Historical Data → Gymnasium Env → RL Agent → Paper Trading → Live (CCXT/
               MACD, RSI, fees, arbitrage
 ```
 
-## Objectives
+## Quick Start
 
-- **Up to 10 trades/day** — Capped to reduce fees and overtrading
-- **Double capital in 30 days** — Target growth (aspirational)
+```bash
+python -m venv .venv
+.venv\Scripts\activate   # Windows: use .venv/Scripts/activate on Git Bash
+pip install -r requirements.txt
+python main.py
+```
+
+At the menu, enter **1** (Learning), **2** (Paper Trading), or **3** (Real Trading). Option **0** exits.
+
+## Commands
+
+### Main Menu (`python main.py`)
+
+| Choice | Phase         | What it does                                      |
+|--------|---------------|---------------------------------------------------|
+| 1      | Learning      | Trains the model and saves to `checkpoints/`      |
+| 2      | Paper Trading | Runs paper trade, prints results                  |
+| 3      | Real Trading  | Connects to Coinbase, dry-run or live             |
+| 0      | Exit          | Quits                                             |
+
+### CLI (alternative to menu)
+
+| Command | Purpose |
+|---------|---------|
+| `python scripts/train.py [options]` | Phase 1: Train model |
+| `python scripts/paper_trade.py [options]` | Phase 2: Paper trade |
+| `python scripts/live_trade.py [options]` | Phase 3: Connect + dry-run |
+| `python scripts/live_loop.py [options]` | Phase 3: Full live loop (candle-aligned) |
+| `python scripts/train_walkforward.py [options]` | Rolling-window training |
+| `streamlit run scripts/dashboard.py` | Monitoring dashboard |
+
+### Command Options
+
+**train.py**
+- `--data PATH` — OHLCV CSV path, or `fetch` (default)
+- `--symbol SYMBOL` — e.g. BTC-USDT (default)
+- `--timeframe TF` — 1h, 4h, etc. (default: 1h)
+- `--limit N` — Bars to fetch (default: 2000)
+- `--timesteps N` — Training steps (default: from config)
+- `--save PATH` — Model save path (default: checkpoints/tradfibot)
+- `--n-envs N` — Parallel envs (default: 1)
+
+**paper_trade.py**
+- `--symbol SYMBOL` — Default: BTC-USDT
+- `--timeframe TF` — Default: 1h
+- `--limit N` — Bars (default: 500)
+- `--model PATH` — Model to load (default: checkpoints/tradfibot)
+
+**live_trade.py**
+- `--symbol SYMBOL` — Default: BTC-USDT
+- `--dry-run` — Connect only, no orders
+- `--model PATH` — Model path
+
+**live_loop.py**
+- `--symbol SYMBOL` — Default: BTC-USDT
+- `--timeframe TF` — Default: 1h
+- `--model PATH` — Model path
+- `--broker ccxt|coinbase` — Broker choice
+- `--dry-run` — Log would-be trades, no orders
+- `--threshold F` — Hysteresis for to_signal (default: 0.05)
+
+**train_walkforward.py**
+- `--data`, `--symbol`, `--timeframe`, `--limit`
+- `--train-months N` — Train window (default: 6)
+- `--test-months N` — Test window (default: 1)
+- `--timesteps N` — Per fold (default: 50000)
+- `--save-prefix PATH` — e.g. checkpoints/wf_ (saves fold1, fold2, …)
+
+**dashboard** — No args. Reads `data/orders.db`. Run in a separate terminal.
 
 ---
 
@@ -102,7 +173,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Create `.env` for live trading (do not commit):
+**CCXT (multi-exchange):** Create `.env`:
 
 ```
 COINBASE_API_KEY=...
@@ -110,27 +181,23 @@ COINBASE_SECRET=...
 COINBASE_PASSPHRASE=...
 ```
 
-## Usage
+**Coinbase CDP (Advanced Trade):** Uses different keys. Install `pip install coinbase-advanced-py`:
 
-**Start the engine (recommended):**
-
-```bash
-python main.py
+```
+COINBASE_API_KEY="organizations/{org_id}/apiKeys/{key_id}"
+COINBASE_API_SECRET="-----BEGIN EC PRIVATE KEY-----\n...\n-----END EC PRIVATE KEY-----\n"
 ```
 
-Select a phase from the menu:
+Or pass `key_file="path/to/cdp_api_key.json"` to `CoinbaseBroker`. Map internal symbols: `BTC-USDT` → `BTC-USD`.
 
-1. **Learning** — Train on historical data
-2. **Paper Trading** — Validate with simulated capital
-3. **Real Trading** — Live execution via Coinbase
+## Typical Workflow
 
-**CLI (alternative):**
-
-```bash
-python scripts/train.py --data fetch --symbol BTC-USDT --timesteps 100000
-python scripts/paper_trade.py --symbol BTC-USDT --model checkpoints/tradfibot
-python scripts/live_trade.py --symbol BTC-USDT --dry-run
-```
+1. **Train:** `python main.py` → 1, or `python scripts/train.py --data fetch --symbol BTC-USDT --timesteps 100000`
+2. **Paper:** `python main.py` → 2, or `python scripts/paper_trade.py --symbol BTC-USDT`
+3. **Validate:** Run paper on different symbols/timeframes; check returns.
+4. **Live (dry-run):** `python scripts/live_trade.py --dry-run` to test connectivity.
+5. **Live loop:** `python scripts/live_loop.py --symbol BTC-USDT --timeframe 1h` (or `--dry-run` first).
+6. **Monitor:** `streamlit run scripts/dashboard.py` in another terminal.
 
 ## Technical Improvements
 
@@ -153,9 +220,55 @@ python scripts/live_trade.py --symbol BTC-USDT --dry-run
 - **Order tracking:** SQLite for open orders; crash recovery (config: `live.order_db_path`).
 - **Secrets:** `.env` + `.gitignore` (never hardcode keys).
 
+**Executor (Coinbase-ready)**
+
+- **Precision:** Amount rounded to exchange `base_increment` (avoids API rejection).
+- **Pre-flight:** Balance check before order; avoids "Insufficient Funds" loop.
+- **Retries:** Configurable retries with backoff on execution failure.
+
+**Coinbase integration checklist**
+
+| Feature         | Importance | Implementation                            |
+| --------------- | ---------- | ----------------------------------------- |
+| Product mapping | High       | Map internal BTC to Coinbase BTC-USD/USDC |
+| Maker vs taker  | Medium     | Limit orders → maker fees; Market → taker |
+| Time in force   | Medium     | GTC or IOC for limit orders               |
+
 **Architecture**
 
 - **Producer-Consumer:** `DataIngestor` (price feeds) → `StrategyBrain` (ML signal) → `Executor` (orders).
+- **StrategyBrain live/paper:** If trained on 1h candles, call `predict()` only once per completed candle. For `to_signal()`, compute `current_pct = (position * price) / total_portfolio_value` from live balance.
+- **StateBuffer:** Use `StateBuffer(feature_cols, window_size)` to maintain the last N bars; `append(new_row)` then `get_obs()` so live obs matches training exactly.
+- **Scaler:** Save `StandardScaler`/`MinMaxScaler` from training and pass to `StrategyBrain(scaler=...)` for live normalization.
+
+**PaperBroker execution monitoring:** Set `log_executions=True` (default); logs each simulated trade with mid price and slippage for spread comparison.
+
+**Executor + Strategy sync (main loop):**
+
+- Before **buy**: Executor pre-flight checks sufficient USD/USDT; avoid "Insufficient Funds" from fees or held orders.
+- Before **sell**: Executor pre-flight checks sufficient base asset (e.g. BTC) to sell.
+
+**Live main loop:** `python scripts/live_loop.py --symbol BTC-USDT --timeframe 1h` — waits for candle close (temporal alignment); `--dry-run` logs would-be trades.
+
+**Dashboard:** `streamlit run scripts/dashboard.py` — KPIs (Total Return %, Win Rate), equity curve, trade markers, position pie. Reads from `data/orders.db`.
+
+**Telemetry:** Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env` for push alerts on trades, circuit breaker, and errors.
+
+**orders.db schema** (dashboard + telemetry):
+
+| Column      | Type | Description                          |
+|-------------|------|--------------------------------------|
+| order_id    | TEXT | Primary key                          |
+| symbol      | TEXT | e.g. BTC-USD                         |
+| side        | TEXT | buy \| sell                          |
+| amount      | REAL | Base currency                        |
+| price       | REAL | Execution price                      |
+| status      | TEXT | open \| filled \| cancelled          |
+| created_at  | TEXT | ISO 8601                             |
+
+**Advanced Trade checklist:** Market buy = quote_size (USD); market sell = base_size (crypto). Symbol mapping: `BTC-USDT` → `BTC-USD`. Use `uuid.uuid4()` for client_order_id (implemented). Rate limits ~30 req/s; keep polling low.
+
+**Kill switch:** On 403 Forbidden or Insufficient Funds, the live loop halts trading (target 0% = all cash) and logs. Restart manually to retry.
 
 ## Configuration
 
@@ -168,6 +281,18 @@ Key settings in `config/default.yaml`:
 | `env.window_size`               | 60      | Lookback bars in observation               |
 | `training.total_timesteps`      | 100000  | Total env steps per training run           |
 | `fees.taker`                    | 0.006   | Taker fee (market orders)                  |
+
+## Phase Isolation (Idempotency)
+
+Each phase uses only its own paths. Running one never affects the others.
+
+| Phase | Writes | Reads |
+|-------|--------|-------|
+| 1. Learning | `checkpoints/` | config, data (fetch/CSV) |
+| 2. Paper Trading | *none* | config, `checkpoints/`, fetch |
+| 3. Live Trading | `data/orders.db` | config, `checkpoints/` |
+
+Configure paths in `config/default.yaml` under `paths`.
 
 ## Safety
 

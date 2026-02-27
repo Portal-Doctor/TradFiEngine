@@ -30,16 +30,27 @@ def run_paper_trade(
     """
     config = load_config()
     ind_cfg = config.get("indicators", {})
+    bb_cfg = ind_cfg.get("bollinger", {})
+    atr_cfg = ind_cfg.get("atr", {})
     feat_cfg = config.get("features", {})
+    env_cfg = config.get("env", {})
     df = add_all_indicators(
         df,
         macd_fast=ind_cfg.get("macd", {}).get("fast", 12),
         macd_slow=ind_cfg.get("macd", {}).get("slow", 26),
         macd_signal=ind_cfg.get("macd", {}).get("signal", 9),
         rsi_length=ind_cfg.get("rsi", {}).get("length", 14),
+        bb_length=bb_cfg.get("length", 20),
+        bb_std=bb_cfg.get("std", 2.0),
+        atr_length=atr_cfg.get("length", 14),
         use_log_returns=feat_cfg.get("use_log_returns", False),
     )
     df = df.dropna().reset_index(drop=True)
+
+    # Match training env: same feature cols and window (no lookahead)
+    skip = {"open", "high", "low", "close", "volume", "timestamp"}
+    feature_cols = [c for c in df.columns if c.lower() not in skip]
+    window_size = env_cfg.get("window_size", 60)
 
     position = 0.0
     balance = initial_balance
@@ -54,16 +65,18 @@ def run_paper_trade(
         broker.set_price("BTC-USDT", price)
 
         if model is not None:
-            # Build observation (simplified: use recent window)
-            window = df.iloc[i - 60 : i][["returns", "RSI", "ATR"]].values
-            window = np.nan_to_num(window, nan=0.0)
-            obs = window.flatten().astype(np.float32)
-            if len(obs) < 180:  # 60 * 3
-                obs = np.pad(obs, (0, 180 - len(obs)))
+            # Build observation to match training env: [i-window, i) — no lookahead
+            start = max(0, i - window_size)
+            window = df.iloc[start:i][feature_cols].values.astype(np.float32)
+            window = np.nan_to_num(window, nan=0.0, posinf=0.0, neginf=0.0)
+            if len(window) < window_size:
+                pad = np.zeros((window_size - len(window), len(feature_cols)), dtype=np.float32)
+                window = np.vstack([pad, window])
+            obs = window.flatten()
             action, _ = model.predict(obs, deterministic=True)
-            target_pct = float(np.clip(action[0], 0, 1))
+            target_pct = float(np.clip(action[0] if hasattr(action, "__len__") else action, 0, 1))
         else:
-            target_pct = 0.5  # Hold 50% if no model
+            target_pct = 0.0  # No model: 100% cash (safety)
 
         target_value = initial_balance * target_pct * 0.95
         target_position = target_value / price if price > 0 else 0.0
@@ -96,14 +109,16 @@ def run_paper_trade(
 
 
 def main():
+    config = load_config()
+    paths = config.get("paths", {})
+    default_model = str(Path(paths.get("checkpoints", "checkpoints")) / "tradfibot")
+
     parser = argparse.ArgumentParser(description="Paper trade with TradFiBot")
     parser.add_argument("--symbol", type=str, default="BTC-USDT")
     parser.add_argument("--timeframe", type=str, default="1h")
     parser.add_argument("--limit", type=int, default=500)
-    parser.add_argument("--model", type=str, default="checkpoints/tradfibot", help="Path to trained model .zip")
+    parser.add_argument("--model", type=str, default=default_model, help="Path to trained model .zip (read-only)")
     args = parser.parse_args()
-
-    config = load_config()
     fees = config.get("fees", {})
     paper_cfg = config.get("paper", {})
 

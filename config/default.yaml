@@ -1,4 +1,8 @@
 # TradFiBot Configuration
+# Phase isolation: each phase uses only its own paths. Running one never affects the others.
+paths:
+  checkpoints: "checkpoints"       # Phase 1 (Learning) writes only here
+  order_db: "data/orders.db"       # Phase 3 (Live) writes only here; Phase 1 & 2 never touch
 
 # Paper trading (safety buffer)
 paper:
@@ -9,7 +13,7 @@ paper:
 live:
   max_daily_drawdown_pct: 5.0   # Kill switch: stop if daily loss exceeds this %
   api_retry_max: 5              # Max retries for 429/5xx with exponential backoff
-  order_db_path: "data/orders.db"   # SQLite for open order tracking (crash recovery)
+  order_db_path: null              # Uses paths.order_db when null
 
 # Objectives
 objectives:
