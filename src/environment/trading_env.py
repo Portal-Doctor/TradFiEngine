@@ -71,6 +71,8 @@ class CryptoTradingEnv(gym.Env):
         bb = ind_cfg.get("bollinger", {})
         atr = ind_cfg.get("atr", {})
 
+        feat_cfg = cfg.get("features", {})
+        use_log_returns = feat_cfg.get("use_log_returns", False)
         self.df = add_all_indicators(
             df,
             macd_fast=macd.get("fast", 12),
@@ -80,6 +82,7 @@ class CryptoTradingEnv(gym.Env):
             bb_length=bb.get("length", 20),
             bb_std=bb.get("std", 2.0),
             atr_length=atr.get("length", 14),
+            use_log_returns=use_log_returns,
         )
 
         # Drop rows with NaN from indicators (warmup period)
@@ -126,7 +129,8 @@ class CryptoTradingEnv(gym.Env):
         return cols
 
     def _get_obs(self) -> np.ndarray:
-        # Only past data: observation is bars [step-window, step), no lookahead
+        # Look-ahead bias prevention: obs uses [step-window, step) — no future data.
+        # At bar t we observe features for t-1 and earlier; step() then uses close(t) for execution.
         start = max(0, self._step_idx - self.window_size)
         end = self._step_idx
         window = self.df.iloc[start:end][self.feature_cols]

@@ -22,7 +22,12 @@ def main():
     parser.add_argument("--model", type=str, default="checkpoints/tradfibot", help="Path to trained model")
     args = parser.parse_args()
 
+    from config import load_config
     from src.brokers import CCXTBroker
+    from src.core import CircuitBreaker, OrderTracker
+
+    config = load_config()
+    live_cfg = config.get("live", {})
 
     model_path = f"{args.model}.zip" if not args.model.endswith(".zip") else args.model
     if not Path(model_path).exists():
@@ -31,8 +36,25 @@ def main():
         return
 
     broker = CCXTBroker(exchange_id="coinbase")
+    broker._api_retry_max = live_cfg.get("api_retry_max", 5)
+
+    circuit = CircuitBreaker(max_daily_drawdown_pct=live_cfg.get("max_daily_drawdown_pct", 5.0))
+    order_tracker = OrderTracker(db_path=live_cfg.get("order_db_path", "data/orders.db"))
+
     bal = broker.get_balance("USDT")
     price = broker.get_price(args.symbol)
+
+    # Circuit breaker: record day start, check before trading
+    total_value = bal.total
+    circuit.record_day_start(total_value)
+    if not circuit.check(total_value):
+        print("\n[CIRCUIT BREAKER] Max daily drawdown exceeded. Trading halted.")
+        return
+
+    # Check for open orders from previous run (crash recovery)
+    open_orders = order_tracker.get_open_orders(args.symbol)
+    if open_orders:
+        print(f"\n  Recovered {len(open_orders)} open order(s) from previous run.")
 
     print(f"Connected to Coinbase")
     print(f"  USDT balance: {bal.total:.2f}")
@@ -46,6 +68,8 @@ def main():
     # - Load model
     # - Fetch latest OHLCV, compute indicators
     # - Get action from model
+    # - Check circuit.check(current_value) before each trade
+    # - order_tracker.add(...) before order; mark_filled after
     # - Execute via broker.create_market_order()
     # - Sleep until next candle
     print("\nLive execution not fully implemented yet.")

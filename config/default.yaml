@@ -1,5 +1,16 @@
 # TradFiBot Configuration
 
+# Paper trading (safety buffer)
+paper:
+  slippage_pct: 0.0008   # 0.08% simulated slippage (between 0.05-0.1%)
+  log_latency: true      # Log time from signal to order confirmation
+
+# Live trading (hardened)
+live:
+  max_daily_drawdown_pct: 5.0   # Kill switch: stop if daily loss exceeds this %
+  api_retry_max: 5              # Max retries for 429/5xx with exponential backoff
+  order_db_path: "data/orders.db"   # SQLite for open order tracking (crash recovery)
+
 # Objectives
 objectives:
   max_trades_per_day: 10
@@ -16,6 +27,10 @@ fees:
   taker: 0.006   # 0.6% taker fee (market orders)
   # Min profit threshold to account for round-trip fee
   min_profit_pct: 0.012  # ~1.2% to cover buy+sell taker fees
+
+# Feature scaling (non-stationary financial data)
+features:
+  use_log_returns: true   # Log-returns instead of raw pct_change for stationarity
 
 # Technical indicators
 indicators:
@@ -47,3 +62,6 @@ training:
   learning_rate: 0.0003
   batch_size: 64
   gamma: 0.99
+  # Walk-forward: rolling window (months of data per fold, None = single block)
+  walk_forward_train_months: null   # e.g. 6 for train on 6 months
+  walk_forward_test_months: null    # e.g. 1 for test on next month

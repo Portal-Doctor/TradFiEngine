@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 
@@ -15,6 +16,7 @@ def add_all_indicators(
     bb_length: int = 20,
     bb_std: float = 2.0,
     atr_length: int = 14,
+    use_log_returns: bool = False,
 ) -> pd.DataFrame:
     """
     Add MACD, RSI, Bollinger Bands, and ATR to OHLCV DataFrame.
@@ -57,7 +59,21 @@ def add_all_indicators(
     atr_ind = AverageTrueRange(high=high, low=low, close=close, window=atr_length)
     result["ATR"] = atr_ind.average_true_range()
 
-    # Normalized price change (simple momentum)
-    result["returns"] = close.pct_change()
+    # Price change: log-returns for stationarity, else pct_change
+    if use_log_returns:
+        result["returns"] = np.log(close / close.shift(1))
+    else:
+        result["returns"] = close.pct_change()
 
+    return result
+
+
+def add_log_returns(df: pd.DataFrame, price_col: str = "close") -> pd.DataFrame:
+    """
+    Add log-returns column. Use for feature scaling with non-stationary data.
+    log_returns are more normally distributed and bounded.
+    """
+    result = df.copy()
+    close = result[price_col] if price_col in result.columns else result["close"]
+    result["log_returns"] = np.log(close / close.shift(1))
     return result

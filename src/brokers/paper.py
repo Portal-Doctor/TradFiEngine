@@ -11,7 +11,8 @@ from .base import BaseBroker, Balance, OrderResult
 class PaperBroker(BaseBroker):
     """
     Simulates trading with virtual balance.
-    Uses config fees and current price for PnL calculation.
+    Uses config fees, slippage, and current price for PnL calculation.
+    Mirrors live conditions: slippage simulates market impact and spread.
     """
 
     def __init__(
@@ -20,12 +21,14 @@ class PaperBroker(BaseBroker):
         quote_currency: str = "USDT",
         taker_fee: float = 0.006,
         maker_fee: float = 0.004,
+        slippage_pct: float = 0.0008,
     ):
         self._balance = initial_balance
         self._quote = quote_currency
         self._positions: dict[str, float] = {}  # symbol_base -> amount
         self.taker_fee = taker_fee
         self.maker_fee = maker_fee
+        self.slippage_pct = slippage_pct  # 0.08% default; simulates worse fill than mid
         self._price_source: dict[str, float] = {}  # symbol -> last known price
 
     def set_price(self, symbol: str, price: float) -> None:
@@ -52,7 +55,13 @@ class PaperBroker(BaseBroker):
         side: Literal["buy", "sell"],
         amount: float,
     ) -> OrderResult:
-        price = self.get_price(symbol)
+        mid_price = self.get_price(symbol)
+        # Slippage: buy at worse (higher), sell at worse (lower) — simulates spread/impact
+        if side == "buy":
+            exec_price = mid_price * (1.0 + self.slippage_pct)
+        else:
+            exec_price = mid_price * (1.0 - self.slippage_pct)
+        price = exec_price
         base, quote = symbol.split("-") if "-" in symbol else (symbol, "USDT")
         cost = amount * price
         fee = cost * self.taker_fee

@@ -86,7 +86,8 @@ TradFiBot/
 ├── src/
 │   ├── indicators/   # MACD, RSI, Bollinger, ATR
 │   ├── environment/  # Gymnasium trading env
-│   ├── engine/       # Trading logic & reward
+│   ├── engine/       # DataIngestor, StrategyBrain, Executor
+│   ├── core/         # Circuit breaker, order tracker
 │   └── brokers/      # Paper & CCXT brokers
 ├── data/             # Historical data (gitignored)
 ├── scripts/          # Training, paper, live runners
@@ -130,6 +131,31 @@ python scripts/train.py --data fetch --symbol BTC-USDT --timesteps 100000
 python scripts/paper_trade.py --symbol BTC-USDT --model checkpoints/tradfibot
 python scripts/live_trade.py --symbol BTC-USDT --dry-run
 ```
+
+## Technical Improvements
+
+**Training**
+
+- **Look-ahead bias prevention:** Observation uses only past data `[t-60, t)`; no future bars.
+- **Feature scaling:** Optional `use_log_returns` for stationarity (config: `features.use_log_returns`).
+- **Walk-forward optimization:** `python scripts/train_walkforward.py --train-months 6 --test-months 1` — rolling window training.
+
+**Paper Trading**
+
+- **Slippage simulation:** 0.05–0.1% worse fill (config: `paper.slippage_pct`).
+- **Fee accounting:** Taker/maker fees on every simulated trade.
+- **Latency logging:** Time-to-execution metrics (config: `paper.log_latency`).
+
+**Live Trading**
+
+- **Circuit breaker:** Kill switch if daily drawdown exceeds threshold (config: `live.max_daily_drawdown_pct`).
+- **API resilience:** Exponential backoff for 429/5xx (config: `live.api_retry_max`).
+- **Order tracking:** SQLite for open orders; crash recovery (config: `live.order_db_path`).
+- **Secrets:** `.env` + `.gitignore` (never hardcode keys).
+
+**Architecture**
+
+- **Producer-Consumer:** `DataIngestor` (price feeds) → `StrategyBrain` (ML signal) → `Executor` (orders).
 
 ## Configuration
 
