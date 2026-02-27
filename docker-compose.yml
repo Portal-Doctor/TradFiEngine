@@ -1,0 +1,53 @@
+services:
+  # STAGE 1: Training (run: docker compose run --rm trainer)
+  trainer:
+    build: .
+    platform: linux/amd64
+    container_name: tradfibot_trainer
+    volumes:
+      - ./data:/app/data
+      - ./checkpoints:/app/checkpoints
+    command: python scripts/train.py --data fetch --symbol BTC-USDT --timesteps 100000 --save /app/checkpoints/tradfibot
+
+  # STAGE 2: Paper Trade (run: docker compose up -d paper-trader)
+  paper-trader:
+    build: .
+    platform: linux/amd64
+    container_name: tradfibot_paper
+    restart: always
+    env_file: .env
+    ports:
+      - "5001:5000"
+    environment:
+      - TRADING_MODE=PAPER
+    volumes:
+      - ./data:/app/data
+      - ./checkpoints:/app/checkpoints
+    command: python scripts/live_loop.py --timeframe 1h
+
+  # STAGE 3: Live Trade (run: docker compose up -d live-engine dashboard)
+  live-engine:
+    build: .
+    platform: linux/amd64
+    container_name: tradfibot_live
+    restart: always
+    env_file: .env
+    ports:
+      - "5000:5000"
+    environment:
+      - TRADING_MODE=LIVE
+    volumes:
+      - ./data:/app/data
+      - ./checkpoints:/app/checkpoints
+    command: python scripts/live_loop.py --timeframe 1h
+
+  dashboard:
+    build: .
+    platform: linux/amd64
+    container_name: tradfibot_dashboard
+    restart: always
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+    command: streamlit run scripts/dashboard.py --server.port=8501 --server.address=0.0.0.0

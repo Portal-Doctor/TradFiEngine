@@ -1,0 +1,38 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+*.egg-info
+dist
+build
+
+# Documentation and notes
+*.md
+*.txt
+!requirements.txt
+
+# Project structure (ephemeral; mount at runtime)
+data/
+checkpoints/
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Env files (secrets; pass at runtime)
+.env
+.env.*
