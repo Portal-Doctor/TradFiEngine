@@ -1,6 +1,6 @@
 """Gymnasium trading environment."""
 
+from .multi_asset_env import MultiAssetTradingEnv
 from .trading_env import CryptoTradingEnv
-from .multi_symbol_env import MultiSymbolTradingEnv
 
-__all__ = ["CryptoTradingEnv", "MultiSymbolTradingEnv"]
+__all__ = ["CryptoTradingEnv", "MultiAssetTradingEnv"]

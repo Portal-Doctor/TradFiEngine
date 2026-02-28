@@ -24,30 +24,60 @@ class DataIngestor:
     Producer: fetches OHLCV data from CSV or exchange.
     For live: use get_last_closed_candle() + sleep_until_next_candle() to avoid
     incomplete-candle leakage. Never append a candle that hasn't closed.
+
+    Can be constructed from config: DataIngestor(config) reads training.data_source,
+    training.timeframe, training.fetch_limit, env.symbols.
     """
 
     def __init__(
         self,
-        source: str = "fetch",
+        source_or_config: str | dict = "fetch",
         symbol: str = "BTC-USDT",
         timeframe: str = "1h",
         limit: int = 500,
         on_bar: Callable[[pd.Series], None] | None = None,
     ):
-        self.source = source
-        self.symbol = symbol
-        self.timeframe = timeframe
-        self.limit = limit
-        self.on_bar = on_bar
+        if isinstance(source_or_config, dict):
+            config = source_or_config
+            train_cfg = config.get("training", {})
+            env_cfg = config.get("env", {})
+            symbols = env_cfg.get("symbols") or ["BTC-USDT"]
+            symbols = symbols if isinstance(symbols, list) else [symbols]
+            self.source = train_cfg.get("data_source", "fetch")
+            self.symbol = symbols[0] if symbols else "BTC-USDT"
+            self.timeframe = train_cfg.get("timeframe", "1h")
+            self.limit = train_cfg.get("fetch_limit", 2000)
+            self.exchange_id = train_cfg.get("exchange_id", "coinbase")
+            self.on_bar = None
+        else:
+            self.source = source_or_config
+            self.symbol = symbol
+            self.timeframe = timeframe
+            self.limit = limit
+            self.exchange_id = "coinbase"
+            self.on_bar = on_bar
 
     def fetch_historical(self) -> pd.DataFrame:
         """Fetch historical OHLCV (blocking)."""
         if self.source == "fetch":
             from src.data import fetch_ohlcv_ccxt
             sym = self.symbol.replace("-", "/")
-            return fetch_ohlcv_ccxt(sym, self.timeframe, limit=self.limit)
+            return fetch_ohlcv_ccxt(
+                sym, self.timeframe, limit=self.limit, exchange_id=self.exchange_id
+            )
         from src.data import load_ohlcv
         return load_ohlcv(self.source)
+
+    def load(self, symbol: str) -> pd.DataFrame:
+        """Load data for a given symbol (same source, timeframe, limit as this ingestor)."""
+        ing = DataIngestor(
+            self.source,
+            symbol=symbol,
+            timeframe=self.timeframe,
+            limit=self.limit,
+        )
+        ing.exchange_id = getattr(self, "exchange_id", "coinbase")
+        return ing.fetch_historical()
 
     def get_latest_bar(self) -> pd.Series | None:
         """Get most recent bar. May be incomplete if current candle still forming."""

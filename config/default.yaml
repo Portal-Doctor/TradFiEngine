@@ -73,16 +73,31 @@ indicators:
   atr:
     length: 14
 
-# Environment (Gymnasium)
+# Environment (Gymnasium) — multi-symbol trade engine
 env:
-  initial_balance: 10000.0
-  max_position_pct: 0.95   # Max 95% in asset
+  symbols:
+    - BTC-USDT
+    - ETH-USDT
+    - SOL-USDT
+    - XRP-USDT
+    # LTC-USDT not on Coinbase; use binance exchange_id if needed
+    - ADA-USDT
+    - DOGE-USDT
+    - LINK-USDT
   window_size: 60          # Lookback bars in observation
-  reward_scale: 1.0
   episode_bars: 500        # Bars per episode (~21 days at 1h); random start each episode
+  base_currency: "USDT"
+  starting_cash: 10000
+  initial_balance: 10000.0 # Legacy; prefer starting_cash
+  max_position_pct: 0.95   # Max 95% in asset
+  reward_scale: 1.0
 
 # Training
 training:
+  data_source: "fetch"    # "fetch" for CCXT, or path to OHLCV CSV
+  exchange_id: "coinbase"  # or binance (geo-restricted in some regions)
+  timeframe: "1h"
+  fetch_limit: 2000
   total_timesteps: 100000  # Total env steps across all episodes
   learning_rate: 0.0003
   batch_size: 64

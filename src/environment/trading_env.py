@@ -53,7 +53,11 @@ class CryptoTradingEnv(gym.Env):
         env_cfg = cfg.get("env", {})
         obj_cfg = cfg.get("objectives", {})
 
-        self.initial_balance = initial_balance or env_cfg.get("initial_balance", 10_000.0)
+        self.initial_balance = (
+            initial_balance
+            or env_cfg.get("starting_cash")
+            or env_cfg.get("initial_balance", 10_000.0)
+        )
         self.bars_per_day = bars_per_day
         self.max_trades_per_day = max_trades_per_day or obj_cfg.get("max_trades_per_day", 10)
         self.taker_fee = taker_fee if taker_fee is not None else fees.get("taker", 0.006)

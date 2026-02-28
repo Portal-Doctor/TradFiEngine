@@ -99,8 +99,16 @@ def main():
     paths = config.get("paths", {})
     default_model = str(Path(paths.get("checkpoints", "checkpoints")) / "tradfibot")
 
+    env_cfg_pre = config.get("env", {})
     symbols_cfg = config.get("symbols", {})
-    default_symbols = symbols_cfg.get("live") or symbols_cfg.get("training") or [symbols_cfg.get("default", "BTC-USDT")]
+    default_symbols = (
+        env_cfg_pre.get("symbols")
+        or symbols_cfg.get("live")
+        or symbols_cfg.get("training")
+        or [symbols_cfg.get("default", "BTC-USDT")]
+    )
+    if not isinstance(default_symbols, list):
+        default_symbols = [default_symbols] if default_symbols else ["BTC-USDT"]
 
     parser = argparse.ArgumentParser(
         description="Live trading loop: Ingestor -> StateBuffer -> Brain -> Executor"

@@ -4,14 +4,14 @@ A reinforcement learning–based auto-trader that learns to trade alt-coins usin
 
 ## How It Works
 
-1. **Learning** — Train a PPO agent on historical OHLCV data. The model learns to output a target position (0–1) at each bar.
-2. **Paper Trading** — Run the trained model over unseen history with simulated fees and slippage. Validates performance before risking real money.
+1. **Learning** — Train a PPO agent on multi-asset historical OHLCV. The model observes all symbols at once and outputs allocation weights across assets.
+2. **Paper Trading** — Evaluate the trained model on a historical date range. Runs sequentially (no random starts), reports Total Return, Max Drawdown, Sharpe.
 3. **Live Trading** — Connect to Coinbase, wait for candle close, get model signal, execute via broker. Orders are logged to `data/orders.db` for the dashboard.
 
 ```
-Historical Data → Gymnasium Env → RL Agent → Paper Trading → Live (CCXT/Coinbase)
-                      ↑
-              MACD, RSI, fees, arbitrage
+Multi-Symbol Data → load_multi_symbol → MultiAssetTradingEnv → PPO → Paper (historical) → Live (CCXT/Coinbase)
+                                              ↑
+                                    MACD, RSI, fees, aligned timestamps
 ```
 
 ## Quick Start
@@ -20,10 +20,19 @@ Historical Data → Gymnasium Env → RL Agent → Paper Trading → Live (CCXT/
 python -m venv .venv
 .venv\Scripts\activate   # Windows: use .venv/Scripts/activate on Git Bash
 pip install -r requirements.txt
-python main.py
 ```
 
-At the menu, enter **1** (Learning), **2** (Paper Trading), or **3** (Real Trading). Option **0** exits.
+**Training** (multi-asset, fetches data via CCXT):
+```bash
+python scripts/train.py
+```
+
+**Paper trading** (historical evaluation, default 2022-01-01–2022-06-30):
+```bash
+python scripts/paper_trade.py
+```
+
+Or run `python main.py` for the interactive menu.
 
 ## Commands
 
@@ -36,12 +45,12 @@ At the menu, enter **1** (Learning), **2** (Paper Trading), or **3** (Real Tradi
 | 3      | Real Trading  | Connects to Coinbase, dry-run or live             |
 | 0      | Exit          | Quits                                             |
 
-### CLI (alternative to menu)
+### CLI (recommended for multi-asset)
 
 | Command | Purpose |
 |---------|---------|
-| `python scripts/train.py [options]` | Phase 1: Train model |
-| `python scripts/paper_trade.py [options]` | Phase 2: Paper trade |
+| `python scripts/train.py` | Phase 1: Train multi-asset model (symbols from config) |
+| `python scripts/paper_trade.py` | Phase 2: Evaluate on historical date range |
 | `python scripts/live_trade.py [options]` | Phase 3: Connect + dry-run |
 | `python scripts/live_loop.py [options]` | Phase 3: Full live loop (candle-aligned) |
 | `python scripts/train_walkforward.py [options]` | Rolling-window training |
@@ -49,20 +58,19 @@ At the menu, enter **1** (Learning), **2** (Paper Trading), or **3** (Real Tradi
 
 ### Command Options
 
-**train.py**
+**train.py** — Multi-asset training (symbols from `config.env.symbols`)
 - `--data PATH` — OHLCV CSV path, or `fetch` (default)
-- `--symbol SYMBOL` — e.g. BTC-USDT (default)
 - `--timeframe TF` — 1h, 4h, etc. (default: 1h)
-- `--limit N` — Bars to fetch (default: 2000)
+- `--limit N` — Bars to fetch per symbol (default: 2000)
 - `--timesteps N` — Training steps (default: from config)
 - `--save PATH` — Model save path (default: checkpoints/tradfibot)
-- `--n-envs N` — Parallel envs (default: 1)
 
-**paper_trade.py**
-- `--symbol SYMBOL` — Default: BTC-USDT
-- `--timeframe TF` — Default: 1h
-- `--limit N` — Bars (default: 500)
-- `--model PATH` — Model to load (default: checkpoints/tradfibot)
+**paper_trade.py** — Historical evaluation on sliced date range
+- `--model PATH` — Trained model (default: checkpoints/tradfibot)
+- `--start YYYY-MM-DD` — Start date (default: 2022-01-01)
+- `--end YYYY-MM-DD` — End date (default: 2022-06-30)
+- `--timeframe TF` — Candle timeframe (default: 1h)
+- `--limit N` — Bars to fetch per symbol (default: 2000)
 
 **live_trade.py**
 - `--symbol SYMBOL` — Default: BTC-USDT
@@ -93,40 +101,48 @@ At the menu, enter **1** (Learning), **2** (Paper Trading), or **3** (Real Tradi
 
 ### 1. Learning (Training)
 
-The engine trains an RL agent (PPO) on historical OHLCV data. The agent learns to maximize portfolio value while respecting fees and trade limits.
+Train the multi-asset PPO agent on aligned historical OHLCV. Symbols come from `config.env.symbols` (e.g. BTC-USDT, ETH-USDT, SOL-USDT, …).
+
+**How to run:**
+```bash
+python scripts/train.py
+# Or with overrides:
+python scripts/train.py --data fetch --timeframe 1h --limit 2000 --timesteps 100000 --save checkpoints/tradfibot
+```
 
 **Training loop:**
 
-- **Total timesteps:** Default 100,000 environment steps (configurable via `--timesteps` or `config/training.total_timesteps`).
-- **Episodes:** Each episode runs for a fixed number of bars (`episode_bars`, default 500 ≈ 21 days at 1h). The PPO algorithm runs many episodes until `total_timesteps` is reached.
-- **Iterations per cycle:** One “training cycle” = one call to `model.learn(total_timesteps)`. With 500 bars/episode and 100K steps, that’s ~200 episodes per cycle.
+- **Total timesteps:** Default 100,000 (config: `training.total_timesteps`).
+- **Episodes:** Each episode runs for `episode_bars` (default 500 ≈ 21 days at 1h). Random start per episode.
+- **Data:** `load_multi_symbol` fetches all symbols via DataIngestor, aligns on timestamps, adds indicators.
 
-**Historical windowing (no lookahead):**
+**Observation:** `(num_symbols, window_size, num_features)` — all symbols at once, rolling window per symbol.
 
-- Each episode starts at a **random point in history**. The start bar is sampled from `[window_size, len(data) - episode_bars]`, so every episode sees a different segment.
-- The agent **only observes past data** at each step. At bar `t`, the observation is the window `[t - 60, t)` of features (MACD, RSI, Bollinger, ATR, returns). Future bars are never visible.
-- The environment uses the close price at bar `t` to execute the agent’s action, mimicking real-time: the agent decides before knowing bar `t+1`.
+**Action:** `(num_symbols,)` — allocation weights (0–1) across assets, normalized so sum ≤ 1; remainder in cash.
 
-**Observation space:** Flattened window of 60 bars × N features (MACD, RSI, Bollinger, ATR, returns).
-
-**Action space:** Continuous `[0, 1]` = target position (0 = all cash, 1 = max 95% in asset).
-
-**Rewards:** Change in portfolio value (minus fees), with a small penalty for trades that don’t beat the minimum profit threshold.
+**Rewards:** Portfolio equity change (minus fees). No lookahead: agent sees only past bars.
 
 ---
 
-### 2. Paper Trading
+### 2. Paper Trading (Historical Evaluation)
 
-Validates the trained model with simulated capital before risking real funds. No real orders are placed.
+Evaluates the trained multi-asset model on a **historical date range**. Runs sequentially (no random starts) and reports metrics.
+
+**How to run:**
+```bash
+python scripts/paper_trade.py
+# Or with a custom period:
+python scripts/paper_trade.py --model checkpoints/tradfibot --start 2023-01-01 --end 2023-12-31
+```
 
 **Process:**
 
-- Loads historical data (or fetches via CCXT) for the chosen symbol and timeframe.
-- Runs the trained model (or a simple hold strategy if no model) over the data.
-- Simulates orders through a paper broker with config fees (taker ~0.6%, maker ~0.4%).
-- Reports initial vs final balance and return %.
+- Loads multi-symbol data via `load_multi_symbol`, slices by `--start` and `--end`.
+- Creates `MultiAssetTradingEnv` in `paper_mode=True` (deterministic, runs full period).
+- Runs `model.predict(obs, deterministic=True)` bar-by-bar; no real orders.
+- Computes Total Return, Max Drawdown, Sharpe ratio.
 
-**Use:** Verify that the model’s learned behavior translates to positive returns on unseen history before going live.
+**Use:** Validate the model on out-of-sample history before going live. If no model is found, runs with random actions (for testing).
 
 ---
 
@@ -214,12 +230,12 @@ Or pass `key_file="path/to/cdp_api_key.json"` to `CoinbaseBroker`. Map internal 
 
 ## Typical Workflow
 
-1. **Train:** `python main.py` → 1, or `python scripts/train.py --data fetch --symbol BTC-USDT --timesteps 100000`
-2. **Paper:** `python main.py` → 2, or `python scripts/paper_trade.py --symbol BTC-USDT`
-3. **Validate:** Run paper on different symbols/timeframes; check returns.
-4. **Live (dry-run):** `python scripts/live_trade.py --dry-run` to test connectivity.
-5. **Live loop:** `python scripts/live_loop.py --symbol BTC-USDT --timeframe 1h` (or `--dry-run` first).
-6. **Monitor:** `streamlit run scripts/dashboard.py` in another terminal.
+1. **Train:** `python scripts/train.py` — trains multi-asset model on config symbols, saves to `checkpoints/tradfibot`
+2. **Paper:** `python scripts/paper_trade.py` — evaluates on 2022-01-01–2022-06-30; or `--start` / `--end` for custom range
+3. **Validate:** Run paper on different date ranges; check Total Return, Max Drawdown, Sharpe
+4. **Live (dry-run):** `python scripts/live_trade.py --dry-run` to test connectivity
+5. **Live loop:** `python scripts/live_loop.py --timeframe 1h` (or `--dry-run` first)
+6. **Monitor:** `streamlit run scripts/dashboard.py` in another terminal
 
 ### Docker Workflow
 
@@ -392,9 +408,11 @@ Key settings in `config/default.yaml`:
 
 | Setting                         | Default | Description                                |
 | ------------------------------- | ------- | ------------------------------------------ |
-| `objectives.max_trades_per_day` | 10      | Max trades per simulated day               |
-| `env.episode_bars`              | 500     | Bars per training episode (~21 days at 1h) |
+| `env.symbols`                   | BTC-USDT, ETH-USDT, … | Symbols for training and paper  |
 | `env.window_size`               | 60      | Lookback bars in observation               |
+| `env.episode_bars`              | 500     | Bars per training episode (~21 days at 1h) |
+| `env.starting_cash`             | 10000   | Initial capital                            |
+| `training.data_source`          | fetch   | `fetch` (CCXT) or CSV path                 |
 | `training.total_timesteps`      | 100000  | Total env steps per training run           |
 | `fees.taker`                    | 0.006   | Taker fee (market orders)                  |
 
