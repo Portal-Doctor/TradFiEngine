@@ -1,5 +1,5 @@
 """Data loading and fetching."""
 
-from .loader import load_ohlcv, fetch_ohlcv_ccxt
+from .loader import create_exchange, fetch_ohlcv_ccxt, load_ohlcv
 
-__all__ = ["load_ohlcv", "fetch_ohlcv_ccxt"]
+__all__ = ["create_exchange", "fetch_ohlcv_ccxt", "load_ohlcv"]

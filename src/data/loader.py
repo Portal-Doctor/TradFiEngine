@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 
+# Coinbase: 10 req/s sustained. Use 200ms min gap = 5 req/s to stay under limit.
+COINBASE_RATE_LIMIT_MS = 200
+
 
 def load_ohlcv(path: str | Path) -> pd.DataFrame:
     """
@@ -19,22 +22,49 @@ def load_ohlcv(path: str | Path) -> pd.DataFrame:
     return df
 
 
-def fetch_ohlcv_ccxt(
-    symbol: str = "BTC/USDT",
-    timeframe: str = "1h",
-    limit: int = 1000,
+def create_exchange(
     exchange_id: str = "coinbase",
-) -> pd.DataFrame:
+    *,
+    rate_limit_ms: int | None = None,
+) -> object:
     """
-    Fetch OHLCV from exchange via CCXT (no auth needed for public data).
+    Create a CCXT exchange instance with rate limiting for Coinbase compliance.
+    Reuse the same instance for multiple fetches so rate limits apply across all calls.
     """
     try:
         import ccxt
     except ImportError:
         raise ImportError("Install ccxt: pip install ccxt")
 
+    opts = {"enableRateLimit": True}
+    if exchange_id == "coinbase" and rate_limit_ms is not None:
+        opts["rateLimit"] = rate_limit_ms
+    elif exchange_id == "coinbase":
+        opts["rateLimit"] = COINBASE_RATE_LIMIT_MS
+
     exchange_class = getattr(ccxt, exchange_id)
-    exchange = exchange_class({"enableRateLimit": True})
+    return exchange_class(opts)
+
+
+def fetch_ohlcv_ccxt(
+    symbol: str = "BTC/USDT",
+    timeframe: str = "1h",
+    limit: int = 1000,
+    exchange_id: str = "coinbase",
+    exchange: object | None = None,
+) -> pd.DataFrame:
+    """
+    Fetch OHLCV from exchange via CCXT (no auth needed for public data).
+    Pass a pre-created exchange to reuse it (recommended for multiple fetches to respect rate limits).
+    """
+    try:
+        import ccxt
+    except ImportError:
+        raise ImportError("Install ccxt: pip install ccxt")
+
+    if exchange is None:
+        exchange = create_exchange(exchange_id)
+
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
     df = pd.DataFrame(
         ohlcv,

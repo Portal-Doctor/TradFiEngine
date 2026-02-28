@@ -28,14 +28,14 @@ def add_all_indicators(
     low = result["low"] if "low" in result.columns else result["Low"]
 
     try:
-        from ta.trend import MACDIndicator
+        from ta.trend import MACD
         from ta.momentum import RSIIndicator
         from ta.volatility import BollingerBands, AverageTrueRange
     except ImportError:
         raise ImportError("Install ta: pip install ta")
 
     # MACD
-    macd_ind = MACDIndicator(
+    macd_ind = MACD(
         close=close,
         window_slow=macd_slow,
         window_fast=macd_fast,

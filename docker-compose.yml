@@ -4,10 +4,11 @@ services:
     build: .
     platform: linux/amd64
     container_name: tradfibot_trainer
+    env_file: .env
     volumes:
       - ./data:/app/data
       - ./checkpoints:/app/checkpoints
-    command: python scripts/train.py --data fetch --symbol BTC-USDT --timesteps 100000 --save /app/checkpoints/tradfibot
+    command: python scripts/train.py --data fetch --symbols all --timesteps 100000 --save /app/checkpoints/tradfibot
 
   # STAGE 2: Paper Trade (run: docker compose up -d paper-trader)
   paper-trader:
